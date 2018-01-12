@@ -1,8 +1,11 @@
-#ifndef CryptChatClient
-#define CryptChatClient
+#ifndef CRYPTCHATCLIENT_H
+#define CRYPTCHATCLIENT_H
 
 int create_socket();
+SSL_CTX *create_context();
+void configure_context(SSL_CTX *ctx, char *cert_file, char *key_file);
+void show_certificates(SSL *ssl);
 void send_message(const char *message, char *response);
 void run_client();
 
-#endif
+#endif /* CRYPTCHATCLIENT_H */
