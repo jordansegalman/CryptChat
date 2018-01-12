@@ -1,6 +1,10 @@
 #ifndef CRYPTCHATSERVER_H
 #define CRYPTCHATSERVER_H
 
+void initialize();
+void terminate();
+void derive_key(const char *pass, unsigned char *out);
+int verify_password(const char *pass);
 int create_socket(int port);
 SSL_CTX *create_context();
 void configure_context(SSL_CTX *ctx, char *cert_file, char *key_file);

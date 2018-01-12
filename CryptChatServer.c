@@ -6,10 +6,46 @@
 #include <string.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/rand.h>
 
 #include "CryptChatServer.h"
 
 #define MAX_MESSAGE 1024
+#define KEY_LENGTH 64
+#define ITERATIONS 10000
+#define DIGEST EVP_sha512()
+
+unsigned char *server_key;
+unsigned char *salt;
+
+void initialize() {
+	server_key = (unsigned char *) malloc(sizeof(unsigned char) * KEY_LENGTH);
+	salt = (unsigned char *) malloc(sizeof(unsigned char) * KEY_LENGTH);
+	RAND_bytes(salt, KEY_LENGTH);
+}
+
+void terminate() {
+	free(server_key);
+	server_key = NULL;
+	free(salt);
+	salt = NULL;
+}
+
+void derive_key(const char *pass, unsigned char *out) {
+	if (PKCS5_PBKDF2_HMAC(pass, strlen(pass), salt, strlen(salt), ITERATIONS, DIGEST, KEY_LENGTH, out) == 0) {
+		fprintf(stderr, "Key derivation failed\n");
+		exit(EXIT_FAILURE);
+	}
+}
+
+int verify_password(const char *pass) {
+	unsigned char *temp_key = (unsigned char *) malloc(sizeof(unsigned char) * KEY_LENGTH);
+	derive_key(pass, temp_key);
+	int result = memcmp(temp_key, server_key, KEY_LENGTH);
+	free(temp_key);
+	temp_key = NULL;
+	return result;
+}
 
 int create_socket(int port) {
 	struct sockaddr_in socketAddress; 
@@ -129,8 +165,16 @@ void run_server(int port) {
 	close(serverSocket);
 	SSL_CTX_free(ctx);
 	EVP_cleanup();
+	terminate();
 }
 
 int main() {
+	initialize();
+	derive_key("testPassword", server_key);
+	if (verify_password("testPassword") == 0) {
+		printf("MATCH\n");
+	} else {
+		printf("NO MATCH\n");
+	}
 	run_server(33333);
 }
