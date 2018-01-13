@@ -3,6 +3,7 @@
 
 void initialize();
 void terminate();
+void create_server_pass();
 void derive_key(const char *pass, unsigned char *out);
 int verify_password(const char *pass);
 int create_socket(int port);

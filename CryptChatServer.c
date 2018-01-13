@@ -22,6 +22,7 @@ void initialize() {
 	server_key = (unsigned char *) malloc(sizeof(unsigned char) * KEY_LENGTH);
 	salt = (unsigned char *) malloc(sizeof(unsigned char) * KEY_LENGTH);
 	RAND_bytes(salt, KEY_LENGTH);
+	create_server_pass();
 }
 
 void terminate() {
@@ -29,6 +30,37 @@ void terminate() {
 	server_key = NULL;
 	free(salt);
 	salt = NULL;
+}
+
+void create_server_pass() {
+	int attempts = 0;
+	int server_pass_created = 0;
+	while (!server_pass_created) {
+		attempts++;
+		char *pass = getpass("New server password: ");
+		if (pass == NULL) {
+			fprintf(stderr, "Getting new password failed\n");
+			exit(EXIT_FAILURE);
+		}
+		derive_key(pass, server_key);
+		memset(pass, 0, strlen(pass));
+		pass = getpass("Confirm password: ");
+		if (pass == NULL) {
+			fprintf(stderr, "Getting new password failed\n");
+			exit(EXIT_FAILURE);
+		}
+		if (!verify_password(pass)) {
+			memset(pass, 0, strlen(pass));
+			server_pass_created = 1;
+		} else {
+			memset(pass, 0, strlen(pass));
+			memset(server_key, 0, strlen(server_key));
+			if (attempts >= 3) {
+				exit(EXIT_FAILURE);
+			}
+			fprintf(stderr, "Passwords did not match. Please try again.\n");
+		}
+	}
 }
 
 void derive_key(const char *pass, unsigned char *out) {
@@ -144,6 +176,7 @@ void process_message(int clientSocket, SSL *ssl) {
 }
 
 void run_server(int port) {
+	initialize();
 	SSL_CTX *ctx;
 	ctx = create_context();
 	configure_context(ctx, "./CryptChat.crt", "./CryptChat.key");
@@ -169,12 +202,5 @@ void run_server(int port) {
 }
 
 int main() {
-	initialize();
-	derive_key("testPassword", server_key);
-	if (verify_password("testPassword") == 0) {
-		printf("MATCH\n");
-	} else {
-		printf("NO MATCH\n");
-	}
 	run_server(33333);
 }
