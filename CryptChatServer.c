@@ -81,9 +81,10 @@ int verify_password(const char *pass) {
 
 int create_socket(int port) {
 	struct sockaddr_in socketAddress; 
+	memset(&socketAddress, 0, sizeof(socketAddress));
 	socketAddress.sin_family = AF_INET;
 	socketAddress.sin_port = htons(port);
-	socketAddress.sin_addr.s_addr = INADDR_ANY;
+	socketAddress.sin_addr.s_addr = htonl(INADDR_ANY);
 	int serverSocket = socket(PF_INET, SOCK_STREAM, 0);
 	if (serverSocket < 0) {
 		perror("Socket creation failed");
@@ -101,13 +102,9 @@ int create_socket(int port) {
 }
 
 SSL_CTX *create_context() {
-	const SSL_METHOD *method;
-	SSL_CTX *ctx;
-	SSL_library_init();
-	OpenSSL_add_all_algorithms();
-	SSL_load_error_strings();
-	method = TLS_server_method();
-	ctx = SSL_CTX_new(method);
+	OPENSSL_init_ssl(0, NULL);
+	const SSL_METHOD *method = TLS_server_method();
+	SSL_CTX *ctx = SSL_CTX_new(method);
 	if (!ctx) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
@@ -116,6 +113,7 @@ SSL_CTX *create_context() {
 }
 
 void configure_context(SSL_CTX *ctx, char *cert_file, char *key_file) {
+	SSL_CTX_set_ecdh_auto(ctx, 1);
 	if (SSL_CTX_load_verify_locations(ctx, cert_file, key_file) != 1) {
 		ERR_print_errors_fp(stderr);
 	}
@@ -177,8 +175,7 @@ void process_message(int clientSocket, SSL *ssl) {
 
 void run_server(int port) {
 	initialize();
-	SSL_CTX *ctx;
-	ctx = create_context();
+	SSL_CTX *ctx = create_context();
 	configure_context(ctx, "./CryptChat.crt", "./CryptChat.key");
 	int serverSocket = create_socket(port);
 	printf("Waiting for connections...\n");
@@ -190,14 +187,12 @@ void run_server(int port) {
 			perror("Accept client failed");
 			exit(EXIT_FAILURE);
 		}
-		SSL *ssl;
-		ssl = SSL_new(ctx);
+		SSL *ssl = SSL_new(ctx);
 		SSL_set_fd(ssl, clientSocket);
 		process_message(clientSocket, ssl);
 	}
 	close(serverSocket);
 	SSL_CTX_free(ctx);
-	EVP_cleanup();
 	terminate();
 }
 

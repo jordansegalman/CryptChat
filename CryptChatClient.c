@@ -15,6 +15,7 @@ int port;
 
 int create_socket() {
 	struct sockaddr_in socketAddress;
+	memset(&socketAddress, 0, sizeof(socketAddress));
 	socketAddress.sin_family = AF_INET;
 	socketAddress.sin_port = htons(port);
 	socketAddress.sin_addr.s_addr = inet_addr(address);
@@ -31,13 +32,9 @@ int create_socket() {
 }
 
 SSL_CTX *create_context() {
-	const SSL_METHOD *method;
-	SSL_CTX *ctx;
-	SSL_library_init();
-	OpenSSL_add_all_algorithms();
-	SSL_load_error_strings();
-	method = TLS_client_method();
-	ctx = SSL_CTX_new(method);
+	OPENSSL_init_ssl(0, NULL);
+	const SSL_METHOD *method = TLS_client_method();
+	SSL_CTX *ctx = SSL_CTX_new(method);
 	if (!ctx) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
@@ -85,12 +82,10 @@ void show_certificates(SSL *ssl) {
 }
 
 void send_message(const char *message, char *response) {
-	SSL_CTX *ctx;
-	ctx = create_context();
+	SSL_CTX *ctx = create_context();
 	configure_context(ctx, "./CryptChat.crt", "./CryptChat.key");
 	int sock = create_socket();
-	SSL *ssl;
-	ssl = SSL_new(ctx);
+	SSL *ssl = SSL_new(ctx);
 	SSL_set_fd(ssl, sock);
 	if (SSL_connect(ssl) < 0) {
 		ERR_print_errors_fp(stderr);
@@ -103,7 +98,6 @@ void send_message(const char *message, char *response) {
 	}
 	close(sock);
 	SSL_CTX_free(ctx);
-	EVP_cleanup();
 }
 
 void run_client() {
