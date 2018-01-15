@@ -91,9 +91,13 @@ void send_message(const char *message, char *response) {
 		ERR_print_errors_fp(stderr);
 	} else {
 		show_certificates(ssl);
-		SSL_write(ssl, message, strlen(message));
-		int len = SSL_read(ssl, response, MAX_RESPONSE);
-		response[len] = '\0';
+		while (1) {
+			SSL_write(ssl, message, strlen(message));
+			int len = SSL_read(ssl, response, MAX_RESPONSE);
+			response[len] = '\0';
+			printf("%s\n", response);
+			sleep(2);
+		}
 		SSL_free(ssl);
 	}
 	close(sock);

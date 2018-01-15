@@ -7,6 +7,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
+#include <pthread.h>
 
 #include "CryptChatServer.h"
 
@@ -14,6 +15,11 @@
 #define KEY_LENGTH 64
 #define ITERATIONS 10000
 #define DIGEST EVP_sha512()
+
+struct client {
+	int client_socket;
+	SSL *ssl;
+};
 
 unsigned char *server_key;
 unsigned char *salt;
@@ -37,14 +43,14 @@ void create_server_pass() {
 	int server_pass_created = 0;
 	while (!server_pass_created) {
 		attempts++;
-		char *pass = getpass("New server password: ");
+		char *pass = getpass("Enter new server password: ");
 		if (pass == NULL) {
 			fprintf(stderr, "Getting new password failed\n");
 			exit(EXIT_FAILURE);
 		}
 		derive_key(pass, server_key);
 		memset(pass, 0, strlen(pass));
-		pass = getpass("Confirm password: ");
+		pass = getpass("Confirm new server password: ");
 		if (pass == NULL) {
 			fprintf(stderr, "Getting new password failed\n");
 			exit(EXIT_FAILURE);
@@ -56,6 +62,7 @@ void create_server_pass() {
 			memset(pass, 0, strlen(pass));
 			memset(server_key, 0, strlen(server_key));
 			if (attempts >= 3) {
+				fprintf(stderr, "Passwords did not match.\n");
 				exit(EXIT_FAILURE);
 			}
 			fprintf(stderr, "Passwords did not match. Please try again.\n");
@@ -152,25 +159,31 @@ void show_certificates(SSL *ssl) {
 	}
 }
 
-void process_message(int clientSocket, SSL *ssl) {
+void *process_message(void *new_client) {
+	struct client *c = (struct client *) new_client;
 	char message[MAX_MESSAGE] = {0};
 	int len;
-	if (SSL_accept(ssl) < 0) {
+	if (SSL_accept(c->ssl) < 0) {
 		ERR_print_errors_fp(stderr);
 	} else {
-		show_certificates(ssl);
-		len = SSL_read(ssl, message, MAX_MESSAGE);
-		if (len > 0) {
-			message[len] = '\0';
-			printf("%s\n", message);
-			const char *response = "SERVER RESPONSE";
-			SSL_write(ssl, response, strlen(response));
-		} else {
-			ERR_print_errors_fp(stderr);
+		show_certificates(c->ssl);
+		while (1) {
+			len = SSL_read(c->ssl, message, MAX_MESSAGE);
+			if (len > 0) {
+				message[len] = '\0';
+				printf("%s\n", message);
+				const char *response = "SERVER RESPONSE";
+				SSL_write(c->ssl, response, strlen(response));
+			} else {
+				ERR_print_errors_fp(stderr);
+			}
+			sleep(2);
 		}
 	}
-	SSL_free(ssl);
-	close(clientSocket);
+	SSL_free(c->ssl);
+	close(c->client_socket);
+	free(c);
+	return NULL;
 }
 
 void run_server(int port) {
@@ -182,14 +195,22 @@ void run_server(int port) {
 	while (1) {
 		struct sockaddr_in clientAddress;
 		socklen_t client_socklen = sizeof(clientAddress);
-		int clientSocket = accept(serverSocket, (struct sockaddr *) &clientAddress, &client_socklen);
-		if (clientSocket < 0) {
+		int new_client_socket = accept(serverSocket, (struct sockaddr *) &clientAddress, &client_socklen);
+		if (new_client_socket < 0) {
 			perror("Accept client failed");
 			exit(EXIT_FAILURE);
 		}
-		SSL *ssl = SSL_new(ctx);
-		SSL_set_fd(ssl, clientSocket);
-		process_message(clientSocket, ssl);
+		SSL *new_ssl = SSL_new(ctx);
+		SSL_set_fd(new_ssl, new_client_socket);
+		struct client *new_client = malloc(sizeof(struct client));
+		new_client->client_socket = new_client_socket;
+		new_client->ssl = new_ssl;
+		pthread_t thread;
+		if (pthread_create(&thread, NULL, process_message, (void *) new_client) != 0) {
+			perror("Thread creation failed");
+			exit(EXIT_FAILURE);
+		}
+		pthread_detach(thread);
 	}
 	close(serverSocket);
 	SSL_CTX_free(ctx);
