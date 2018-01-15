@@ -62,10 +62,10 @@ void create_server_pass() {
 			memset(pass, 0, strlen(pass));
 			memset(server_key, 0, strlen(server_key));
 			if (attempts >= 3) {
-				fprintf(stderr, "Passwords did not match.\n");
+				printf("Passwords did not match.\n");
 				exit(EXIT_FAILURE);
 			}
-			fprintf(stderr, "Passwords did not match. Please try again.\n");
+			printf("Passwords did not match. Please try again.\n");
 		}
 	}
 }
@@ -123,19 +123,21 @@ void configure_context(SSL_CTX *ctx, char *cert_file, char *key_file) {
 	SSL_CTX_set_ecdh_auto(ctx, 1);
 	if (SSL_CTX_load_verify_locations(ctx, cert_file, key_file) != 1) {
 		ERR_print_errors_fp(stderr);
+		exit(EXIT_FAILURE);
 	}
 	if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
 		ERR_print_errors_fp(stderr);
+		exit(EXIT_FAILURE);
 	}
-	if (SSL_CTX_use_certificate_file(ctx, cert_file, SSL_FILETYPE_PEM) <= 0) {
+	if (SSL_CTX_use_certificate_file(ctx, cert_file, SSL_FILETYPE_PEM) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
-	if (SSL_CTX_use_PrivateKey_file(ctx, key_file, SSL_FILETYPE_PEM) <= 0 ) {
+	if (SSL_CTX_use_PrivateKey_file(ctx, key_file, SSL_FILETYPE_PEM) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
-	if (!SSL_CTX_check_private_key(ctx)) {
+	if (SSL_CTX_check_private_key(ctx) != 1) {
 		perror("Private key does not match public certificate");
 		exit(EXIT_FAILURE);
 	}
@@ -161,21 +163,24 @@ void show_certificates(SSL *ssl) {
 
 void *process_message(void *new_client) {
 	struct client *c = (struct client *) new_client;
-	char message[MAX_MESSAGE] = {0};
-	int len;
 	if (SSL_accept(c->ssl) < 0) {
 		ERR_print_errors_fp(stderr);
 	} else {
+		printf("Client connected.\n");
 		show_certificates(c->ssl);
 		while (1) {
-			len = SSL_read(c->ssl, message, MAX_MESSAGE);
-			if (len > 0) {
-				message[len] = '\0';
-				printf("%s\n", message);
-				const char *response = "SERVER RESPONSE";
-				SSL_write(c->ssl, response, strlen(response));
-			} else {
-				ERR_print_errors_fp(stderr);
+			char message[MAX_MESSAGE] = {0};
+			int len = SSL_read(c->ssl, message, MAX_MESSAGE);
+			if (len <= 0) {
+				printf("Client disconnected.\n");
+				break;
+			}
+			message[len] = '\0';
+			printf("%s\n", message);
+			const char *response = "SERVER RESPONSE";
+			if (SSL_write(c->ssl, response, strlen(response)) <= 0) {
+				printf("Client disconnected.\n");
+				break;
 			}
 			sleep(2);
 		}

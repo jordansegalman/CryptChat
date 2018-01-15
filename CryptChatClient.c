@@ -45,19 +45,21 @@ SSL_CTX *create_context() {
 void configure_context(SSL_CTX *ctx, char *cert_file, char *key_file) {
 	if (SSL_CTX_load_verify_locations(ctx, cert_file, key_file) != 1) {
 		ERR_print_errors_fp(stderr);
+		exit(EXIT_FAILURE);
 	}
 	if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
 		ERR_print_errors_fp(stderr);
+		exit(EXIT_FAILURE);
 	}
-	if (SSL_CTX_use_certificate_file(ctx, cert_file, SSL_FILETYPE_PEM) <= 0) {
+	if (SSL_CTX_use_certificate_file(ctx, cert_file, SSL_FILETYPE_PEM) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
-	if (SSL_CTX_use_PrivateKey_file(ctx, key_file, SSL_FILETYPE_PEM) <= 0 ) {
+	if (SSL_CTX_use_PrivateKey_file(ctx, key_file, SSL_FILETYPE_PEM) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
-	if (!SSL_CTX_check_private_key(ctx)) {
+	if (SSL_CTX_check_private_key(ctx) != 1) {
 		perror("Private key does not match public certificate");
 		exit(EXIT_FAILURE);
 	}
@@ -81,7 +83,7 @@ void show_certificates(SSL *ssl) {
 	}
 }
 
-void send_message(const char *message, char *response) {
+void send_message(const char *message) {
 	SSL_CTX *ctx = create_context();
 	configure_context(ctx, "./CryptChat.crt", "./CryptChat.key");
 	int sock = create_socket();
@@ -90,10 +92,19 @@ void send_message(const char *message, char *response) {
 	if (SSL_connect(ssl) < 0) {
 		ERR_print_errors_fp(stderr);
 	} else {
+		printf("Connected to server.\n");
 		show_certificates(ssl);
 		while (1) {
-			SSL_write(ssl, message, strlen(message));
+			if (SSL_write(ssl, message, strlen(message)) <= 0) {
+				printf("Connection to server lost.\n");
+				break;
+			}
+			char response[MAX_RESPONSE] = {0};
 			int len = SSL_read(ssl, response, MAX_RESPONSE);
+			if (len <= 0) {
+				printf("Connection to server lost.\n");
+				break;
+			}
 			response[len] = '\0';
 			printf("%s\n", response);
 			sleep(2);
@@ -106,9 +117,7 @@ void send_message(const char *message, char *response) {
 
 void run_client() {
 	printf("Welcome to CryptChat!\n");
-	char response[MAX_RESPONSE] = {0};
-	send_message("CLIENT MESSAGE", response);
-	printf("%s\n", response);
+	send_message("CLIENT MESSAGE");
 }
 
 int main() {
