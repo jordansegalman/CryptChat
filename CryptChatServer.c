@@ -11,24 +11,71 @@
 
 #include "CryptChatServer.h"
 
+#define CONFIG "server_config"
 #define MAX_MESSAGE 1024
 #define KEY_LENGTH 64
 #define ITERATIONS 10000
 #define DIGEST EVP_sha512()
+
+struct config {
+	int port;
+	char *cert;
+	char *key;
+};
 
 struct client {
 	int client_socket;
 	SSL *ssl;
 };
 
+struct config server_config;
 unsigned char *server_key;
 unsigned char *salt;
 
 void initialize() {
+	parse_config();
 	server_key = (unsigned char *) malloc(sizeof(unsigned char) * KEY_LENGTH);
 	salt = (unsigned char *) malloc(sizeof(unsigned char) * KEY_LENGTH);
 	RAND_bytes(salt, KEY_LENGTH);
 	create_server_pass();
+}
+
+void parse_config() {
+	FILE *config_file = fopen(CONFIG, "r");
+	char *line = NULL;
+	size_t len = 0;
+	ssize_t read;
+
+	if (config_file != NULL) {
+		while ((read = getline(&line, &len, config_file)) != -1) {
+			char *delim = strchr(line, ' ');
+			int n = delim - line;
+			if (!strncmp(line, "Certificate", n)) {
+				server_config.cert = (char *) malloc(sizeof(char) * (strlen(line) - n - 1));
+				strncpy(server_config.cert, delim + 1, strlen(line) - n - 2);
+				server_config.cert[strlen(line) - n - 2] = '\0';
+			} else if (!strncmp(line, "Port", n)) {
+				char *p = (char *) malloc(sizeof(char) * (strlen(line) - n - 1));
+				strncpy(p, delim + 1, strlen(line) - n - 2);
+				p[strlen(line) - n - 2] = '\0';
+				server_config.port = atoi(p);
+				free(p);
+				p = NULL;
+			} else if (!strncmp(line, "Key", n)) {
+				server_config.key = (char *) malloc(sizeof(char) * (strlen(line) - n - 1));
+				strncpy(server_config.key, delim + 1, strlen(line) - n - 2);
+				server_config.key[strlen(line) - n - 2] = '\0';
+			}
+		}
+		fclose(config_file);
+		if (line) {
+			free(line);
+			line = NULL;
+		}
+	} else {
+		fprintf(stderr, "Could not open server configuration file \'%s\'.\n", CONFIG);
+		exit(EXIT_FAILURE);
+	}
 }
 
 void terminate() {
@@ -36,6 +83,10 @@ void terminate() {
 	server_key = NULL;
 	free(salt);
 	salt = NULL;
+	free(server_config.cert);
+	server_config.cert = NULL;
+	free(server_config.key);
+	server_config.key = NULL;
 }
 
 void create_server_pass() {
@@ -86,11 +137,11 @@ int verify_password(const char *pass) {
 	return result;
 }
 
-int create_socket(int port) {
+int create_socket() {
 	struct sockaddr_in socketAddress; 
 	memset(&socketAddress, 0, sizeof(socketAddress));
 	socketAddress.sin_family = AF_INET;
-	socketAddress.sin_port = htons(port);
+	socketAddress.sin_port = htons(server_config.port);
 	socketAddress.sin_addr.s_addr = htonl(INADDR_ANY);
 	int serverSocket = socket(PF_INET, SOCK_STREAM, 0);
 	if (serverSocket < 0) {
@@ -119,9 +170,9 @@ SSL_CTX *create_context() {
 	return ctx;
 }
 
-void configure_context(SSL_CTX *ctx, char *cert_file, char *key_file) {
+void configure_context(SSL_CTX *ctx) {
 	SSL_CTX_set_ecdh_auto(ctx, 1);
-	if (SSL_CTX_load_verify_locations(ctx, cert_file, key_file) != 1) {
+	if (SSL_CTX_load_verify_locations(ctx, server_config.cert, server_config.key) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
@@ -129,11 +180,11 @@ void configure_context(SSL_CTX *ctx, char *cert_file, char *key_file) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
-	if (SSL_CTX_use_certificate_file(ctx, cert_file, SSL_FILETYPE_PEM) != 1) {
+	if (SSL_CTX_use_certificate_file(ctx, server_config.cert, SSL_FILETYPE_PEM) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
-	if (SSL_CTX_use_PrivateKey_file(ctx, key_file, SSL_FILETYPE_PEM) != 1) {
+	if (SSL_CTX_use_PrivateKey_file(ctx, server_config.key, SSL_FILETYPE_PEM) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
@@ -191,11 +242,11 @@ void *process_message(void *new_client) {
 	return NULL;
 }
 
-void run_server(int port) {
+void run_server() {
 	initialize();
 	SSL_CTX *ctx = create_context();
-	configure_context(ctx, "./CryptChat.crt", "./CryptChat.key");
-	int serverSocket = create_socket(port);
+	configure_context(ctx);
+	int serverSocket = create_socket();
 	printf("Waiting for connections...\n");
 	while (1) {
 		struct sockaddr_in clientAddress;
@@ -223,5 +274,5 @@ void run_server(int port) {
 }
 
 int main() {
-	run_server(33333);
+	run_server();
 }
