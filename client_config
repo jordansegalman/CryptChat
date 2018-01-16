@@ -1,4 +1,5 @@
 Address 127.0.0.1
 Port 33333
-Certificate CryptChat.crt
-Key CryptChat.key
+Certificate ca/client.crt
+Key ca/client.key
+CA ca/ca.crt

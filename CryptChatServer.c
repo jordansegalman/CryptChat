@@ -21,6 +21,7 @@ struct config {
 	int port;
 	char *cert;
 	char *key;
+	char *ca;
 };
 
 struct client {
@@ -65,6 +66,10 @@ void parse_config() {
 				server_config.key = (char *) malloc(sizeof(char) * (strlen(line) - n - 1));
 				strncpy(server_config.key, delim + 1, strlen(line) - n - 2);
 				server_config.key[strlen(line) - n - 2] = '\0';
+			} else if (!strncmp(line, "CA", n)) {
+				server_config.ca = (char *) malloc(sizeof(char) * (strlen(line) - n - 1));
+				strncpy(server_config.ca, delim + 1, strlen(line) - n - 2);
+				server_config.ca[strlen(line) - n - 2] = '\0';
 			}
 		}
 		fclose(config_file);
@@ -172,7 +177,7 @@ SSL_CTX *create_context() {
 
 void configure_context(SSL_CTX *ctx) {
 	SSL_CTX_set_ecdh_auto(ctx, 1);
-	if (SSL_CTX_load_verify_locations(ctx, server_config.cert, server_config.key) != 1) {
+	if (SSL_CTX_load_verify_locations(ctx, server_config.ca, NULL) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}

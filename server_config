@@ -1,3 +1,4 @@
 Port 33333
-Certificate CryptChat.crt
-Key CryptChat.key
+Certificate ca/server.crt
+Key ca/server.key
+CA ca/ca.crt

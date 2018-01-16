@@ -16,6 +16,7 @@ struct config {
 	int port;
 	char *cert;
 	char *key;
+	char *ca;
 };
 
 struct config client_config;
@@ -54,6 +55,10 @@ void parse_config() {
 				client_config.key = (char *) malloc(sizeof(char) * (strlen(line) - n - 1));
 				strncpy(client_config.key, delim + 1, strlen(line) - n - 2);
 				client_config.key[strlen(line) - n - 2] = '\0';
+			} else if (!strncmp(line, "CA", n)) {
+				client_config.ca = (char *) malloc(sizeof(char) * (strlen(line) - n - 1));
+				strncpy(client_config.ca, delim + 1, strlen(line) - n - 2);
+				client_config.ca[strlen(line) - n - 2] = '\0';
 			}
 		}
 		fclose(config_file);
@@ -106,7 +111,7 @@ SSL_CTX *create_context() {
 }
 
 void configure_context(SSL_CTX *ctx) {
-	if (SSL_CTX_load_verify_locations(ctx, client_config.cert, client_config.key) != 1) {
+	if (SSL_CTX_load_verify_locations(ctx, client_config.ca, NULL) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
