@@ -11,20 +11,32 @@
 #define CONFIG "client_config"
 #define MAX_RESPONSE 1024
 
+/*
+ * Client configuration struct
+ */
+
 struct config {
-	char *address;
-	int port;
-	char *cert;
-	char *key;
-	char *ca;
+	char *address;	// server address
+	int port;	// server port
+	char *cert;	// client certificate
+	char *key;	// client key
+	char *ca;	// ca certificate
 };
 
-struct config client_config;
+struct config client_config;	// client configuration
+
+/*
+ * @brief Calls client configuration function and prints welcome message
+ */
 
 void initialize() {
 	parse_config();
 	printf("Welcome to CryptChat!\n");
 }
+
+/*
+ * @brief Parses client configuration file
+ */
 
 void parse_config() {
 	FILE *config_file = fopen(CONFIG, "r");
@@ -72,6 +84,10 @@ void parse_config() {
 	}
 }
 
+/*
+ * @brief Cleans up the client by freeing memory allocated for global variables
+ */
+
 void terminate() {
 	free(client_config.address);
 	client_config.address = NULL;
@@ -79,7 +95,15 @@ void terminate() {
 	client_config.cert = NULL;
 	free(client_config.key);
 	client_config.key = NULL;
+	free(client_config.ca);
+	client_config.ca = NULL;
 }
+
+/*
+ * @brief Creates client socket
+ *
+ * @return File descriptor for created client socket
+ */
 
 int create_socket() {
 	struct sockaddr_in socketAddress;
@@ -87,17 +111,26 @@ int create_socket() {
 	socketAddress.sin_family = AF_INET;
 	socketAddress.sin_port = htons(client_config.port);
 	socketAddress.sin_addr.s_addr = inet_addr(client_config.address);
+
 	int sock = socket(PF_INET, SOCK_STREAM, 0);
 	if (sock < 0) {
 		perror("Socket creation failed");
 		exit(EXIT_FAILURE);
 	}
+
 	if (connect(sock, (struct sockaddr *) &socketAddress, sizeof(socketAddress)) < 0) {
 		perror("Connection failed");
 		exit(EXIT_FAILURE);
 	}
+
 	return sock;
 }
+
+/*
+ * @brief Creates client SSL context
+ *
+ * @return Pointer to created client SSL context
+ */
 
 SSL_CTX *create_context() {
 	OPENSSL_init_ssl(0, NULL);
@@ -110,46 +143,75 @@ SSL_CTX *create_context() {
 	return ctx;
 }
 
+/*
+ * @brief Configures the client SSL context using the client certificate, client key,
+ * and ca certificate
+ *
+ * @param ctx Client SSL context to configure
+ */
+
 void configure_context(SSL_CTX *ctx) {
 	if (SSL_CTX_load_verify_locations(ctx, client_config.ca, NULL) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
+
 	if (SSL_CTX_set_default_verify_paths(ctx) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
+
 	if (SSL_CTX_use_certificate_file(ctx, client_config.cert, SSL_FILETYPE_PEM) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
+
 	if (SSL_CTX_use_PrivateKey_file(ctx, client_config.key, SSL_FILETYPE_PEM) != 1) {
 		ERR_print_errors_fp(stderr);
 		exit(EXIT_FAILURE);
 	}
+
 	if (SSL_CTX_check_private_key(ctx) != 1) {
 		perror("Private key does not match public certificate");
 		exit(EXIT_FAILURE);
 	}
+
 	SSL_CTX_set_verify(ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
 }
 
-void show_certificates(SSL *ssl) {
+/*
+ * @brief Shows SSL connection and server certificate information
+ *
+ * @param ssl Client SSL structure
+ */
+
+void show_ssl_info(SSL *ssl) {
 	printf("SSL cipher: %s\n", SSL_get_cipher(ssl));
+
 	X509 *server_cert = SSL_get_peer_certificate(ssl);
 	if (server_cert != NULL) {
 		printf("Server certificate:\n");
+
 		char *str = X509_NAME_oneline(X509_get_subject_name(server_cert), 0, 0);
 		printf("\tSubject: %s\n", str);
 		OPENSSL_free(str);
+
 		str = X509_NAME_oneline(X509_get_issuer_name(server_cert), 0, 0);
 		printf("\tIssuer: %s\n", str);
 		OPENSSL_free(str);
+
 		X509_free(server_cert);
 	} else {
 		printf("Server does not have certificate\n");
 	}
 }
+
+/*
+ * @brief Attempt SSL connection to server, send message to server, and read server
+ * response
+ *
+ * @param new_client Client information struct
+ */
 
 void send_message(const char *message) {
 	SSL_CTX *ctx = create_context();
@@ -157,16 +219,19 @@ void send_message(const char *message) {
 	int sock = create_socket();
 	SSL *ssl = SSL_new(ctx);
 	SSL_set_fd(ssl, sock);
+
 	if (SSL_connect(ssl) < 0) {
 		ERR_print_errors_fp(stderr);
 	} else {
 		printf("Connected to server.\n");
-		show_certificates(ssl);
+		show_ssl_info(ssl);
+
 		while (1) {
 			if (SSL_write(ssl, message, strlen(message)) <= 0) {
 				printf("Connection to server lost.\n");
 				break;
 			}
+
 			char response[MAX_RESPONSE] = {0};
 			int len = SSL_read(ssl, response, MAX_RESPONSE);
 			if (len <= 0) {
@@ -175,6 +240,7 @@ void send_message(const char *message) {
 			}
 			response[len] = '\0';
 			printf("%s\n", response);
+
 			sleep(2);
 		}
 		SSL_free(ssl);
@@ -182,6 +248,11 @@ void send_message(const char *message) {
 	close(sock);
 	SSL_CTX_free(ctx);
 }
+
+/*
+ * @brief Call functions to initialize client, send message to server, and cleanup
+ * and terminate client
+ */
 
 void run_client() {
 	initialize();

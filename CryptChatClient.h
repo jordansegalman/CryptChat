@@ -7,7 +7,7 @@ void terminate();
 int create_socket();
 SSL_CTX *create_context();
 void configure_context(SSL_CTX *ctx);
-void show_certificates(SSL *ssl);
+void show_ssl_info(SSL *ssl);
 void send_message(const char *message);
 void run_client();
 
